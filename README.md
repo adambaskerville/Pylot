@@ -5,7 +5,7 @@ Plotting data is a key part of any science and there are a lot of software solut
 
 Pylot is a very simple Python program which offers a GUI for quick plotting of single or multiple data files. If you want to see more about how it works, visit my [T>T blog post](https://adambaskerville.github.io/posts/PythonGUIPlotter/)
 
-It offers colour selection, line styles, legend labels and recognises LaTeX math syntax. This is what the GUI looks like and the resulting plot it produces.
+It offers colour selection, line styles, legend labels and recognises LaTeX math syntax. This is what the GUI looks like when you use it:
 
 ![](https://raw.githubusercontent.com/adambaskerville/adambaskerville.github.io/master/assets/img/PlotterGUI.gif)
 
