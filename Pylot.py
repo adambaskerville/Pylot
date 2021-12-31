@@ -1,149 +1,291 @@
-#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+""" Main file for Pylot.
+
+"""
+from typing import List
+import sys
+import os
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 import PySimpleGUI as sg
-import sys
-import os
-import itertools
 
-# set the seaborn dark grid styling
-sns.set_style("darkgrid")
-# set the theme for PysimpleGUI
-sg.theme('DarkAmber')   
+import plots as own_plots
 
-if len(sys.argv) == 1:
-    event, fnames = sg.Window('Select File(s) you wish to plot.').Layout([[sg.Text('Note, select multiple files by holding ctrl and clicking the number required.')],
-                                                                          [sg.Input(key='_FILES_'), sg.FilesBrowse()], 
-                                                                          [sg.OK(), sg.Cancel()]]).Read(close=True)
-    # close the window if cancel is pressed
+STYLE = "darkgrid"
+THEME = "DarkAmber"
+
+NUM_OF_FIELDS = 9
+
+
+def draw_plots(plt_type, cols_per_file, decimal_character, file, legend_text, plt_color,
+               plt_line, separator, x_axis_label, x_cols, y_axis_label, y_cols, figure,
+               rotation: int = 0, hue=None, do_box: bool = False) -> None:
+    """ Function to draw different kind of plots.
+
+    Args:
+        plt_type: String with the type of plot to draw.
+        cols_per_file: List with the number of columns per file.
+        decimal_character: String with the decimal character, typically '.' or ','.
+        file: String with the file name.
+        legend_text:
+        plt_color: (Optional) String with the color of the plot.
+        plt_line: (Optional) String with the line style of the plot.
+        separator: String .csv file separator.
+        x_axis_label: String with the x axis label.
+        x_cols: List with the x axis columns.
+        y_axis_label: String with the y axis label.
+        y_cols: List with the y axis columns.
+        hue: (Optional) String with the hue column.
+        rotation: Integer indicating the  rotation of the labels in degrees.
+        do_box: (Optional) Boolean indicating if the heatmap should be drawn with boxes or not.
+        figure: Matplotlib figure object.
+    """
+    plt.figure(figure.number)
+
+    df = pd.read_csv(file, usecols=cols_per_file, sep=separator, header=None,
+                     decimal=decimal_character)[cols_per_file]
+
+    # Plot the data set using Seaborn and set legend labels from user specified ones above
+    if plt_type == 'point':
+        sns.scatterplot(data=df, x=x_cols, y=y_cols, color=plt_color, s=10,
+                        label=f"{legend_text}")
+    elif plt_type == "bar":
+        df = df.round(1)
+        ax = sns.barplot(data=df, x=x_cols, y=y_cols, hue=hue, palette="Blues_d")
+
+        for container in ax.containers:
+            ax.bar_label(container)
+    elif plt_type == 'heatmap':
+        sns.heatmap(df, annot=True, fmt='.3g', cmap="Blues", square=do_box)
+    elif plt_type == 'map':
+        own_plots.world_map.draw(countries=df[x_cols], values=df[y_cols])
+    else:
+        sns.lineplot(data=df, x=x_cols, y=y_cols, color=plt_color, linestyle=plt_line,
+                     markers=True, dashes=False,
+                     label=f"{legend_text}")
+        sns.scatterplot(data=df, x=x_cols, y=y_cols, color=plt_color, s=20)
+
+    # Set the x and y axis labels from the user specified ones above
+    plt.xlabel(r'{}'.format(x_axis_label))
+    plt.ylabel(r'{}'.format(y_axis_label))
+    plt.yticks(rotation=rotation, va='center')
+
+    plt.legend(ncol=2, loc=1)
+
+
+def draw_initial_gui():
+    """ Draw the initial GUI.
+
+    This functions draws the first window of the GUI. It contains the field to select the next
+    elements:
+        The path to the data files.
+        The separator character for the data files.
+        The decimal character.
+        If the output should be saved to a file or not.
+
+    Returns:
+        A list of the selected values.
+    """
+    # Set the theme for PysimpleGUI
+    separator = ";"
+    decimal_character = ","
+    save_to_file = False
+    if len(sys.argv) == 1:
+        event, inputs_text = sg.Window('Select File(s) you wish to plot.').Layout([
+            [sg.Text('Note, select multiple files by holding ctrl')],
+            [sg.Input(key='_FILES_'), sg.FilesBrowse()],
+            [sg.Text('Options')],
+            [sg.Text("_" * 60)],
+            [sg.Text("Separator"),
+             sg.InputText(";", size=(2, 1), key='separator'),
+             sg.Text("Decimal character"),
+             sg.InputText(",", size=(2, 1), key='decimal_character'),
+             sg.Checkbox('Save to file:', default=False, key='save_to_file')],
+            [sg.OK(), sg.Cancel()]]).Read(close=True)
+        # Close the window if cancel is pressed
+        if event in (sg.WIN_CLOSED, 'Cancel'):
+            exit()
+
+        file_names = inputs_text['_FILES_']
+        separator = inputs_text['separator']
+        save_to_file = inputs_text['save_to_file']
+        decimal_character = inputs_text['decimal_character']
+    else:
+        # Check to see if any files were provided on the command line
+        file_names = sys.argv[1]
+    return decimal_character, file_names, save_to_file, separator
+
+
+def draw_main_windows(file_names: List[str]):
+    """ Function to draw the main window.
+
+    Args:
+        file_names: List of strings with the file names.
+
+    Returns:
+        Returns with a list of values from the inputs of the main windows.
+    """
+    # List the available colours for the plots
+    matplotlib_colours = ["dodgerblue", "indianred", "gold", "steelblue", "tomato", "slategray",
+                          "plum", "seagreen", "gray", 'chocolate', 'olive', 'darkcyan', 'indigo']
+    # List the line-styles you want
+    matplotlib_linestyles = ["solid", "dashed", "dashdot", "dotted"]
+    headings = ['TYPE', 'COLOUR', 'LINE', 'LEGEND']  # the text of the headings
+
+    # Create the layout of the Window
+    layout = [[sg.Text(
+        'You can use LaTeX math code for axis labels and legend entries, e.g. $\\mathbf{r}$',
+        font=('Courier', 10))],
+        [sg.Text('To use regular text in math mode use $\\mathrm{Text}$\n')],
+        [sg.Text('_' * 130, size=(100, 1))],  # Add horizontal spacer
+        [sg.Text('X-axis label:'),
+         sg.InputText(''),
+         sg.Text('Y-axis label:'),
+         sg.InputText('')],
+        [sg.Text('_' * 130, size=(100, 1))],  # Add horizontal spacer
+        [sg.Text('Min X:'),
+         sg.InputText('', size=(2, 1)),
+         sg.Text('Max X:'),
+         sg.InputText('', size=(2, 1))],
+        [sg.Text('Min Y:'),
+         sg.InputText('', size=(2, 1)),
+         sg.Text('Max Y:'),
+         sg.InputText('', size=(2, 1))
+         ],
+        [sg.Text('_' * 130, size=(100, 1))],  # Add horizontal spacer
+        [sg.Text(' ' * 110)] + [sg.Text(h, size=(9, 1)) for h in headings],
+    ]
+    for idx, f in enumerate(file_names):
+        layout += [
+            [sg.Text(f'File: {os.path.basename(os.path.normpath(f))}', size=(10, 1)),
+             sg.Text("X"),
+             sg.InputText('0', size=(5, 1)),
+             sg.Text("Y"),
+             sg.InputText('1', size=(5, 1)),
+             sg.Text("HUE"),
+             sg.InputText('', size=(5, 1)),
+             sg.Text("ROT."),
+             sg.InputText('0', size=(5, 1)),
+             sg.Checkbox('BOX:', default=False, key='save_to_file'),
+             sg.InputCombo(values=('point', 'bar', 'line', 'map', 'heatmap'),
+                           default_value='line'),
+             sg.InputCombo(values=matplotlib_colours, default_value=matplotlib_colours[idx]),
+             sg.InputCombo(values=matplotlib_linestyles,
+                           default_value=matplotlib_linestyles[0]),
+             sg.InputText('Enter Legend Label', size=(20, 1)),
+             ]]
+    layout += [[sg.Text('_' * 130, size=(100, 1))],
+               [sg.Button('Plot'), sg.Button('Cancel')]]
+    # Create the Window
+    window = sg.Window('Plot v1-01', layout)
+    # Read in the events and values
+    event, values = window.read()
+    values = list(values.values())
+    # If cancel is pressed then close the window and exit
     if event in (sg.WIN_CLOSED, 'Cancel'):
         exit()
+    window.close()
 
-else:
-    # check to see if any files were provided on the command line
-    fnames = sys.argv[1]
+    return values
 
-# if no file names are selected, exit the program
-if not fnames['_FILES_']:
-    sg.popup("Cancel", "No filename supplied")
-    raise SystemExit("Cancelling: no filename supplied")
 
-# count the number of files provided
-fnames = fnames['_FILES_'].split(';')
-no_files = len(fnames)
+def main():
+    # set the seaborn dark grid styling
+    sns.set_style(STYLE)
+    # set the theme for PysimpleGUI
+    sg.theme(THEME)
 
-# list the available colours for the plots
-matplotlib_colours = ["dodgerblue", "indianred", "gold", "steelblue", "tomato", "slategray", "plum", "seagreen", "gray"]
-# list the line-styles you want
-matplotlib_linestyles = ["solid", "dashed", "dashdot", "dotted"]
+    decimal_character, fnames, save_to_file, separator = draw_initial_gui()
+    # count the number of files provided
+    fnames = fnames.split(';')
+    file_names = fnames
 
-headings = ['X,Y INDICES', '  TYPE', 'COLOUR','LINE', '  LEGEND']  # the text of the headings
+    values = draw_main_windows(file_names)
+    # Access the values which were entered and store in lists
+    x_axis_label = values[0]
+    y_axis_label = values[1]
 
-# Create the layout of the Window
-layout = [  [sg.Text('You can use LaTeX math code for axis labels and legend entries, e.g. $\mathbf{r}$', font=('Courier', 10))],
-            [sg.Text('To use regular text in math mode use $\mathrm{Text}$\n')],
-            [sg.Text('_'  * 100, size=(100, 1))], # Add horizontal spacer  
-            [sg.Text('X-axis label:'), 
-                sg.InputText('')],
-            [sg.Text('Y-axis label:'), 
-                sg.InputText('')],
-            [sg.Text('_'  * 100, size=(100, 1))], # Add horizontal spacer  
-            [sg.Text('                                        ')] + [sg.Text(h, size=(11,1)) for h in headings],  # build header layout
-            *[[sg.Text('File: {}'.format(os.path.basename(os.path.normpath(i))), size=(40, 1)), 
-                sg.InputText('X', size=(5, 1)),
-                sg.InputText('Y', size=(5, 1)),
-                sg.InputCombo(values=('point', 'line')),
-                sg.InputCombo(values=(matplotlib_colours)),
-                sg.InputCombo(values=(matplotlib_linestyles)),
-                sg.InputText('Enter Legend Label', size=(20, 1)),
-              ] for i in fnames
-             ],
-            [sg.Text('_'  * 100, size=(100, 1))], # Add horizontal spacer
-            [sg.Button('Plot'), sg.Button('Cancel')],
-         ]
+    min_x = values[2]
+    min_y = values[3]
+    max_x = values[4]
+    max_y = values[5]
 
-# create the main GUI window
-window = sg.Window('Pylot', layout)
-# read in the events and values       
-event, values = window.read()
-# if cancel is pressed then close the window and exit
-if event in (sg.WIN_CLOSED, 'Cancel'):
-    exit()
+    min_x = None if len(min_x) == 0 else int(min_x)
+    min_y = None if len(min_y) == 0 else int(min_y)
+    max_x = None if len(max_x) == 0 else int(max_x)
+    max_y = None if len(max_y) == 0 else int(max_y)
 
-window.close()
+    values = values[6:]
 
-# access the values which were entered and store in lists
-xAxisLabel = values[0]
-yAxisLabel = values[1]
+    list_of_data_sets = []
+    legend_labels = []
+    xcols = []
+    ycols = []
+    rotations = []
+    cols_to_use = []
+    plot_type = []
+    plot_colour = []
+    plot_line = []
+    hue_labels = []
+    make_boxes = []
 
-listOfDataSets = []
-legendLabels   = []
-xcols          = []
-ycols          = []
-cols_to_use    = []
-plot_type      = []
-plot_colour    = []
-plot_line      = []
-i = 2
-for file in fnames:
-    # append the data files to a single list
-    listOfDataSets.append(file)
-    # append the column indices to a list for later
-    xcolindex = int(values[i]) - 1 # index 2
-    i += 1
-    ycolindex = int(values[i]) - 1 # index 3
-    # append the separate x and y column indices to their respective lists. These are used when plotting using Seaborn below
-    xcols.append(xcolindex)
-    ycols.append(ycolindex)
-    # append both the x and y to a combined list in order to construct the DataFrame object
-    cols_to_use.append([xcolindex, ycolindex])
-    # append the type of plot [ scatter | line ]
-    i += 1
-    plot_type.append(values[i]) # index 4
-    # append the colour of the plot
-    i += 1
-    plot_colour.append(values[i]) # index 5
-    # append the linestyle of the plot
-    i += 1
-    plot_line.append(values[i]) # index 6
-    # append the user specified legend labels to a list for later
-    i += 1
-    legendLabels.append(values[i]) # index 7
-    i += 1
+    for idx, file in enumerate(file_names):
+        # Append the data files to a single list
+        list_of_data_sets.append(file)
+        value_per_file = values[(idx * NUM_OF_FIELDS): ((idx + 1) * NUM_OF_FIELDS)]
+        x_col_index, y_col_index, hue_label, rotation, make_box, type_plot, color_plot, line_style, l_labels = value_per_file
 
-fig, ax = plt.subplots(figsize=(4, 4))
+        hue_label = int(hue_label) if len(hue_label) > 0 else None
 
-# iterate over the colours and line styles provided from the GUI 
-plot_colour = itertools.cycle(plot_colour)
-plot_line = itertools.cycle(plot_line)
+        x_col_index, y_col_index = int(x_col_index), int(y_col_index)
 
-for i in range(0, len(listOfDataSets)):
-    # read in data set into a pandas dataframe. Note [cols_to_use[i]] at the end maintains column index order 
-    df = pd.read_csv(listOfDataSets[i], usecols=cols_to_use[i], sep="\s+|\t+|\s+\t+|\t+\s+|,\s+|\s+,", header=None, engine='python')[cols_to_use[i]]
-    # plot the data set using Seaborn and set legend labels from user specified ones above
-    if plot_type[i] == 'point':
-        ax.scatter(df[xcols[i]], df[ycols[i]], color=next(plot_colour), s=10, label=r'{}'.format(legendLabels[i]))
-    elif plot_type[i] == 'line':
-        ax.plot(df[xcols[i]], df[ycols[i]], color=next(plot_colour), linestyle=next(plot_line), label=r'{}'.format(legendLabels[i]))
-    else:
-        # if a plot type is not specified [point | line] then default to line
-        print("\n No option for plot type specified, defaulting to line plot")
-        ax.plot(df[xcols[i]], df[ycols[i]], color=next(plot_colour), linestyle=next(plot_line),  label=r'{}'.format(legendLabels[i]))
+        xcols.append(x_col_index)
+        ycols.append(y_col_index)
+        hue_labels.append(hue_label)
+        rotations.append(rotation)
+        make_boxes.append(make_box)
 
-    # work out the minimum and maximum values in the columns to get the plotting range correct
-    xmin = df[xcols[i]].min()
-    xmax = df[xcols[i]].max()
-    ymin = df[ycols[i]].min()
-    ymax = df[ycols[i]].max()
-    # set axis limits
-    plt.xlim(xmin, None)
-    plt.ylim(ymin, None)
-    # set the x and y axis labels from the user specified ones above
-    plt.xlabel(r'{}'.format(xAxisLabel))
-    plt.ylabel(r'{}'.format(yAxisLabel))
-    # show the legend
-    plt.legend()
+        if hue_label is not None:
+            cols_to_use.append([x_col_index, y_col_index, hue_label])
+        else:
+            cols_to_use.append([x_col_index, y_col_index])
 
-# finally show the plot on screen
-plt.show() 
+        plot_type.append(type_plot)  # index 4
+        plot_colour.append(color_plot)  # index 5
+        plot_line.append(line_style)  # index 6
+        legend_labels.append(l_labels)  # index 7
+
+    figures = []
+    fig = None
+    for file, plt_type, x_cols, y_cols, cols_per_file, legend_label, plt_line, plt_color, hue_l, \
+        rot, make_box in zip(list_of_data_sets, plot_type, xcols, ycols, cols_to_use, legend_labels,
+                             plot_line, plot_colour, hue_labels, rotations, make_boxes):
+
+        if (plt_type != 'line' and plt_type != 'point') or fig is None:
+            fig = plt.figure()
+            figures.append(fig)
+
+        draw_plots(plt_type, cols_per_file, decimal_character, file, legend_label, plt_color,
+                   plt_line, separator, x_axis_label, x_cols, y_axis_label, y_cols, fig, hue=hue_l)
+
+    # Finally show the plot on screen
+    for f_names, fig in zip(file_names, figures):
+        folder, f_name = os.path.split(f_names)
+        folder = os.path.join(folder, "out")
+        os.makedirs(folder, exist_ok=True)
+
+        f_name = os.path.join(folder, f"{f_name.split('.')[0]}.png")
+        fig.tight_layout()
+        plt.ylim([min_y, max_y])
+        plt.xlim([min_x, max_x])
+
+        if save_to_file:
+            fig.savefig(f_name)
+
+    plt.show()
+
+
+if __name__ == '__main__':
+    main()
